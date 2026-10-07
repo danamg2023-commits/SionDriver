@@ -1,4 +1,7 @@
 {
+  "engines": {
+    "node": "18.x"
+  },
   "dependencies": {
     "@capacitor/android": "^8.5.2",
     "@capacitor/cli": "^8.5.2",
