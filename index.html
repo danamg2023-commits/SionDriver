@@ -1,0 +1,628 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta http-equiv="Content-Security-Policy" content="default-src * 'self' 'unsafe-inline' 'unsafe-eval' data: gap: content: https: http:;">
+    <title>InDriver - Google Maps Guatemala</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 10px; margin-bottom: 40px; background: #f4f4f9; color: #333; -webkit-tap-highlight-color: transparent; }
+        .container { max-width: 600px; margin: 0 auto; background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 15px; }
+        h2 { color: #007bff; border-bottom: 2px solid #eee; padding-bottom: 8px; margin-top: 0; }
+        input, select { width: 100%; padding: 12px; margin: 6px 0; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; font-size: 16px; }
+        
+        #map-container-wrapper { width: 100%; height: 260px; min-height: 260px; margin: 10px 0; position: relative; display: block; background: #e0e0e0; border-radius: 6px; overflow: hidden; }
+        #map { width: 100%; height: 260px; position: absolute; top: 0; left: 0; border-radius: 6px; z-index: 1; }
+        
+        .driver-map { height: 200px; width: 100%; border-radius: 6px; margin: 8px 0; position: relative; background: #e0e0e0; }
+        
+        .map-modes { display: flex; gap: 10px; margin-bottom: 5px; }
+        .map-modes button { padding: 10px; font-size: 0.9em; background: #6c757d; border: none; color: white; border-radius: 4px; flex: 1; cursor: pointer; }
+        .map-modes button.active { background: #007bff; }
+        
+        .quick-offers { display: flex; gap: 8px; margin-bottom: 10px; }
+        .quick-offers button { background: #ffc107; color: #333; font-size: 0.9em; padding: 10px; border: none; border-radius: 4px; flex: 1; font-weight: bold; cursor: pointer; }
+        .ride-card { background: #e9ecef; padding: 15px; border-radius: 6px; margin-top: 10px; border-left: 5px solid #ffc107; }
+        .badge-vehiculo { display: inline-block; padding: 3px 8px; border-radius: 4px; font-size: 0.85em; font-weight: bold; background: #6c757d; color: white; margin-bottom: 5px; }
+        .oferta-item { background: #fff3cd; border: 1px solid #ffeeba; padding: 10px; border-radius: 6px; margin: 6px 0; display: flex; justify-content: space-between; align-items: center; }
+        .pasajero-activo-card { background: #e8f5e9; padding: 15px; border-radius: 6px; margin-top: 10px; border-left: 5px solid #28a745; display: none; }
+    </style>
+    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyB-cPD9QxIO4tfzi4Yc_ZS6tG3szFI_zBg&libraries=places" async defer></script>
+</head>
+<body>
+
+    <!-- PASAJERO -->
+    <div class="container">
+        <h2>Panel de Pasajero (Google Maps)</h2>
+        <div id="panel-solicitud-pasajero">
+            <input type="text" id="pasajero" value="Dan">
+            
+            <label style="font-weight: bold;">Tipo de vehículo:</label>
+            <select id="tipo-vehiculo" onchange="recalcularTarifaPorDistancia()">
+                <option value="moto">🏍️ Moto</option>
+                <option value="carro">🚗 Carro</option>
+            </select>
+
+            <label style="font-weight: bold; font-size: 0.9em; color: #555; margin-top: 8px; display: block;">Toca el mapa o escribe dirección exacta:</label>
+            <div class="map-modes">
+                <button type="button" id="btn-modo-origen" class="active" onclick="cambiarModoMapa('origen')">🟢 Marcar Origen</button>
+                <button type="button" id="btn-modo-destino" onclick="cambiarModoMapa('destino')">🔴 Marcar Destino</button>
+            </div>
+            
+            <div id="map-container-wrapper">
+                <div id="map"></div>
+            </div>
+            <p id="info-ruta" style="font-weight: bold; color: #007bff; font-size: 0.9em; margin: 5px 0;">Estado: Toca el mapa o escribe la dirección</p>
+
+            <input type="text" id="origen" placeholder="Ej: Obelisco, Zona 10, Guatemala..." onchange="buscarOrigenEscrito()">
+            <input type="text" id="destino" placeholder="Ej: Cayalá, Zona 16, Guatemala..." onchange="buscarDestinoEscrito()">
+            <input type="number" id="oferta" placeholder="Tu Oferta Q" oninput="notificarCambioOfertaPasajero()">
+
+            <div class="quick-offers">
+                <button type="button" onclick="aplicarOfertaRapida(2)" id="btn-op1">Q12</button>
+                <button type="button" onclick="aplicarOfertaRapida(3)" id="btn-op2">Q13</button>
+                <button type="button" onclick="aplicarOfertaRapida(5)" id="btn-op3">Q15</button>
+            </div>
+
+            <!-- Botón ultra blindado con contenedor y onclick directo -->
+            <div style="margin-top: 15px; width: 100%;">
+                <button type="button" id="btn-solicitar" onclick="manejarSolicitudViaje()" style="display: block; width: 100%; background: #28a745; color: white; font-size: 19px; font-weight: bold; padding: 20px; text-align: center; border: 2px solid #fff; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); cursor: pointer;">
+                    🚀 SOLICITAR VIAJE
+                </button>
+            </div>
+
+            <div id="contenedor-ofertas-pilotos" style="margin-top: 15px; display: none;">
+                <p style="font-weight: bold; color: #856404; margin-bottom: 5px;">🚗 Ofertas recibidas de pilotos:</p>
+                <div id="lista-ofertas-recibidas"></div>
+            </div>
+            
+            <button type="button" id="btn-cancelar-viaje" onclick="cancelarViajePasajero()" style="background: #dc3545; display: none; width:100%; padding:14px; border:none; color:white; font-weight:bold; border-radius:4px; margin-top:10px; cursor:pointer;">Cancelar</button>
+            <p id="mensaje-estado" style="font-weight: bold; margin-top: 8px;"></p>
+        </div>
+
+        <div id="panel-viaje-exitoso-pasajero" class="pasajero-activo-card">
+            <p style="color: green; font-size: 1.1em; margin-top: 0;"><strong>¡Conductor en camino!</strong></p>
+            <p><strong>Piloto asignado:</strong> <span id="pasajero-info-conductor">--</span></p>
+            <p><strong>Precio acordado:</strong> Q<span id="pasajero-info-precio">--</span></p>
+            <p><strong>Código a dictar al subir:</strong> <span id="pasajero-info-codigo" style="font-size: 1.3em; background: #fff; padding: 2px 6px; border: 2px dashed #28a745; color: #28a745;">---</span></p>
+            
+            <p style="font-weight: bold; margin-top: 10px;">📍 Ubicación en vivo del piloto:</p>
+            <div id="pasajero-mapa-vivo" class="driver-map"></div>
+            <button type="button" onclick="finalizarViajePasajero()" style="background: #dc3545; margin-top: 10px; width:100%; padding:14px; border:none; color:white; font-weight:bold; border-radius:4px; cursor:pointer;">Cancelar Viaje</button>
+        </div>
+    </div>
+
+    <!-- CONDUCTOR -->
+    <div class="container">
+        <h2>Panel de Conductor</h2>
+        <div id="panel-conexion-conductor">
+            <input type="text" id="nombre-conductor" value="Juan Piloto" placeholder="Tu Nombre">
+            <select id="conductor-vehiculo">
+                <option value="moto">🏍️ Moto</option>
+                <option value="carro">🚗 Carro</option>
+            </select>
+            <button type="button" onclick="conectarConductor()" style="background: #007bff; width:100%; padding:14px; border:none; color:white; font-weight:bold; border-radius:4px; cursor:pointer;">Conectarse</button>
+        </div>
+        <div id="lista-viajes" style="display:none;">
+            <p style="color: green; font-weight: bold;">🟢 Solicitudes disponibles en el área:</p>
+            <div id="contenedor-tarjetas-viajes"></div>
+        </div>
+    </div>
+
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <script>
+        var socket = io('http://localhost:3000');
+        var coordsOrigen = null, coordsDestino = null, conductorInfo = null;
+        var tarifaBaseCalculada = 10, incrementoSeleccionado = 2;
+        var viajeActivoId = null;
+        var watchIdGPS = null, mapasConductores = {}, pasajeroMapaVivo = null, pasajeroMarkerPiloto = null;
+        var map = null, geocoder = null;
+        var modoActual = 'origen', markerOrigen = null, markerDestino = null;
+
+        window.addEventListener('DOMContentLoaded', () => {
+            inicializarApp();
+        });
+
+        function inicializarApp() {
+            const mapContainer = document.getElementById('map');
+            if (!mapContainer) return;
+
+            const verificarGoogleMaps = setInterval(() => {
+                if (typeof google !== 'undefined' && google.maps) {
+                    clearInterval(verificarGoogleMaps);
+                    geocoder = new google.maps.Geocoder();
+
+                    map = new google.maps.Map(mapContainer, {
+                        center: { lat: 14.6349, lng: -90.5069 },
+                        zoom: 13,
+                        disableDefaultUI: false,
+                        zoomControl: true
+                    });
+
+                    map.addListener('click', function(e) {
+                        const lat = e.latLng.lat();
+                        const lng = e.latLng.lng();
+                        const latLngObj = { lat, lng };
+
+                        if (modoActual === 'origen') {
+                            coordsOrigen = latLngObj;
+                            if (markerOrigen) {
+                                markerOrigen.setPosition(latLngObj);
+                            } else {
+                                markerOrigen = new google.maps.Marker({
+                                    position: latLngObj,
+                                    map: map,
+                                    icon: 'https://maps.google.com/mapfiles/ms/icons/green-dot.png'
+                                });
+                            }
+                            geocoder.geocode({ location: latLngObj }, (results, status) => {
+                                if (status === "OK" && results[0]) {
+                                    document.getElementById('origen').value = results[0].formatted_address;
+                                } else {
+                                    document.getElementById('origen').value = `Ubicación (${lat.toFixed(4)}, ${lng.toFixed(4)})`;
+                                }
+                            });
+                            cambiarModoMapa('destino');
+                        } else {
+                            coordsDestino = latLngObj;
+                            if (markerDestino) {
+                                markerDestino.setPosition(latLngObj);
+                            } else {
+                                markerDestino = new google.maps.Marker({
+                                    position: latLngObj,
+                                    map: map,
+                                    icon: 'https://maps.google.com/mapfiles/ms/icons/red-dot.png'
+                                });
+                            }
+                            geocoder.geocode({ location: latLngObj }, (results, status) => {
+                                if (status === "OK" && results[0]) {
+                                    document.getElementById('destino').value = results[0].formatted_address;
+                                } else {
+                                    document.getElementById('destino').value = `Ubicación (${lat.toFixed(4)}, ${lng.toFixed(4)})`;
+                                }
+                            });
+                        }
+
+                        if (coordsOrigen && coordsDestino) {
+                            document.getElementById('info-ruta').innerText = '✅ Origen y destino listos';
+                            recalcularTarifaPorDistancia();
+                        }
+                    });
+
+                    recalcularTarifaPorDistancia();
+                }
+            }, 200);
+        }
+
+        function buscarOrigenEscrito() {
+            const rawQuery = document.getElementById('origen').value.trim();
+            if (!rawQuery || !geocoder) return;
+
+            const query = rawQuery.toLowerCase().includes('guatemala') ? rawQuery : `${rawQuery}, Guatemala`;
+
+            geocoder.geocode({ address: query }, (results, status) => {
+                if (status === "OK" && results[0]) {
+                    const loc = results[0].geometry.location;
+                    coordsOrigen = { lat: loc.lat(), lng: loc.lng() };
+
+                    if (markerOrigen) {
+                        markerOrigen.setPosition(coordsOrigen);
+                    } else {
+                        markerOrigen = new google.maps.Marker({
+                            position: coordsOrigen,
+                            map: map,
+                            icon: 'https://maps.google.com/mapfiles/ms/icons/green-dot.png'
+                        });
+                    }
+                    map.setCenter(coordsOrigen);
+                    map.setZoom(16);
+
+                    if (coordsOrigen && coordsDestino) {
+                        document.getElementById('info-ruta').innerText = '✅ Origen y destino listos';
+                        recalcularTarifaPorDistancia();
+                    }
+                }
+            });
+        }
+
+        function buscarDestinoEscrito() {
+            const rawQuery = document.getElementById('destino').value.trim();
+            if (!rawQuery || !geocoder) return;
+
+            const query = rawQuery.toLowerCase().includes('guatemala') ? rawQuery : `${rawQuery}, Guatemala`;
+
+            geocoder.geocode({ address: query }, (results, status) => {
+                if (status === "OK" && results[0]) {
+                    const loc = results[0].geometry.location;
+                    coordsDestino = { lat: loc.lat(), lng: loc.lng() };
+
+                    if (markerDestino) {
+                        markerDestino.setPosition(coordsDestino);
+                    } else {
+                        markerDestino = new google.maps.Marker({
+                            position: coordsDestino,
+                            map: map,
+                            icon: 'https://maps.google.com/mapfiles/ms/icons/red-dot.png'
+                        });
+                    }
+                    map.setCenter(coordsDestino);
+                    map.setZoom(16);
+
+                    if (coordsOrigen && coordsDestino) {
+                        document.getElementById('info-ruta').innerText = '✅ Origen y destino listos';
+                        recalcularTarifaPorDistancia();
+                    }
+                }
+            });
+        }
+
+        function cambiarModoMapa(modo) {
+            modoActual = modo;
+            document.getElementById('btn-modo-origen').classList.toggle('active', modo === 'origen');
+            document.getElementById('btn-modo-destino').classList.toggle('active', modo === 'destino');
+        }
+
+        function calcularDistanciaKM(lat1, lon1, lat2, lon2) {
+            const R = 6371;
+            const dLat = (lat2 - lat1) * Math.PI / 180;
+            const dLon = (lon2 - lon1) * Math.PI / 180;
+            const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                      Math.sin(dLon/2) * Math.sin(dLon/2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+            return R * c;
+        }
+
+        function recalcularTarifaPorDistancia() {
+            const tipo = document.getElementById('tipo-vehiculo').value;
+            let tarifaMinima = tipo === 'moto' ? 10 : 15;
+            let costoPorKm = tipo === 'moto' ? 3 : 5;
+
+            if (coordsOrigen && coordsDestino) {
+                const distanciaKm = calcularDistanciaKM(coordsOrigen.lat, coordsOrigen.lng, coordsDestino.lat, coordsDestino.lng);
+                const distanciaEstimadaRuta = distanciaKm * 1.3; 
+                tarifaBaseCalculada = Math.round(tarifaMinima + (distanciaEstimadaRuta * costoPorKm));
+            } else {
+                tarifaBaseCalculada = tarifaMinima;
+            }
+
+            document.getElementById('oferta').value = tarifaBaseCalculada;
+            document.getElementById('btn-op1').innerText = `Q${tarifaBaseCalculada + 2}`;
+            document.getElementById('btn-op2').innerText = `Q${tarifaBaseCalculada + 3}`;
+            document.getElementById('btn-op3').innerText = `Q${tarifaBaseCalculada + 5}`;
+        }
+
+        function aplicarOfertaRapida(extra) {
+            incrementoSeleccionado = extra;
+            document.getElementById('oferta').value = tarifaBaseCalculada + extra;
+        }
+
+        function manejarSolicitudViaje() {
+            if (document.activeElement) document.activeElement.blur();
+
+            const pasajero = document.getElementById('pasajero').value;
+            const tipoVehiculo = document.getElementById('tipo-vehiculo').value;
+            const origen = document.getElementById('origen').value.trim();
+            const destino = document.getElementById('destino').value.trim();
+            const ofertaVal = document.getElementById('oferta').value;
+            const oferta = parseFloat(ofertaVal);
+
+            if (!origen || !destino) {
+                alert('Por favor escribe o marca el origen y el destino.');
+                return;
+            }
+
+            if (isNaN(oferta) || oferta <= 0) {
+                alert('Por favor ingresa una oferta válida en quetzales.');
+                return;
+            }
+
+            function obtenerCoordenadasSeguras(direccion, callback) {
+                const query = direccion.toLowerCase().includes('guatemala') ? direccion : `${direccion}, Guatemala`;
+                
+                geocoder.geocode({ address: query }, (res, status) => {
+                    if (status === "OK" && res[0]) {
+                        callback({ lat: res[0].geometry.location.lat(), lng: res[0].geometry.location.lng() });
+                    } else {
+                        const matchZona = direccion.match(/zona\s*\d+/i);
+                        const queryAlternativa = matchZona ? `Ciudad de Guatemala, ${matchZona[0]}` : `Ciudad de Guatemala, Zona 1`;
+                        
+                        geocoder.geocode({ address: queryAlternativa }, (resAlt, statusAlt) => {
+                            if (statusAlt === "OK" && resAlt[0]) {
+                                callback({ lat: resAlt[0].geometry.location.lat(), lng: resAlt[0].geometry.location.lng() });
+                            } else {
+                                callback({ lat: 14.6349, lng: -90.5069 });
+                            }
+                        });
+                    }
+                });
+            }
+
+            if (!coordsOrigen || !coordsDestino) {
+                obtenerCoordenadasSeguras(origen, (locOr) => {
+                    coordsOrigen = locOr;
+                    obtenerCoordenadasSeguras(destino, (locDes) => {
+                        coordsDestino = locDes;
+
+                        socket.emit('solicitar_viaje', { 
+                            viajeId: viajeActivoId, 
+                            pasajero, 
+                            tipoVehiculo, 
+                            origen, 
+                            destino, 
+                            oferta, 
+                            incremento: incrementoSeleccionado, 
+                            coordsOrigen, 
+                            coordsDestino 
+                        });
+                    });
+                });
+            } else {
+                socket.emit('solicitar_viaje', { 
+                    viajeId: viajeActivoId, 
+                    pasajero, 
+                    tipoVehiculo, 
+                    origen, 
+                    destino, 
+                    oferta, 
+                    incremento: incrementoSeleccionado, 
+                    coordsOrigen, 
+                    coordsDestino 
+                });
+            }
+        }
+
+        function notificarCambioOfertaPasajero() { if (viajeActivoId) manejarSolicitudViaje(); }
+        function cancelarViajePasajero() { if (viajeActivoId) socket.emit('cancelar_viaje', { viajeId: viajeActivoId }); }
+        function finalizarViajePasajero() { cancelarViajePasajero(); }
+
+        socket.on('viaje_creado_id', (id) => {
+            viajeActivoId = id;
+            const btn = document.getElementById('btn-solicitar');
+            btn.innerText = '🚀 VIAJE ACTIVO (ESPERANDO OFERTAS...)';
+            btn.style.background = '#17a2b8';
+            document.getElementById('btn-cancelar-viaje').style.display = 'block';
+        });
+
+        socket.on('respuesta_viaje', (res) => {
+            document.getElementById('mensaje-estado').innerText = res.mensaje;
+        });
+
+        function conectarConductor() {
+            if (document.activeElement) document.activeElement.blur();
+            const nombre = document.getElementById('nombre-conductor').value.trim();
+            if (!nombre) return alert('Ingresa tu nombre');
+            conductorInfo = { nombre, tipoVehiculo: document.getElementById('conductor-vehiculo').value };
+
+            document.getElementById('panel-conexion-conductor').style.display = 'none';
+            document.getElementById('lista-viajes').style.display = 'block';
+            
+            socket.emit('solicitar_viajes_pendientes');
+            alert('🟢 Conectado como piloto. Buscando solicitudes...');
+        }
+
+        function enviarContraofertaPiloto(viajeId, inc) {
+            const span = document.getElementById(`precio-${viajeId}`);
+            if (span) {
+                const nuevoPrecio = parseFloat(span.innerText) + inc;
+                socket.emit('contraofertar', { viajeId, nuevoPrecio, conductorNombre: conductorInfo.nombre });
+                alert(`Tu oferta de Q${nuevoPrecio} fue enviada al pasajero.`);
+            }
+        }
+
+        function seleccionarOfertaPasajero(conductorNombre, monto) {
+            if (confirm(`¿Aceptar la oferta de ${conductorNombre} por Q${monto}?`)) {
+                socket.emit('aceptar_oferta_piloto', { viajeId: viajeActivoId, conductorNombre, precioAcordado: monto });
+            }
+        }
+
+        function abrirGPSExterno(lat, lng) {
+            window.open(`https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}&travelmode=driving`, '_blank');
+        }
+
+        function iniciarRecogidaPiloto(viajeId) {
+            socket.emit('iniciar_recogida_piloto', { viajeId });
+            if (watchIdGPS) navigator.geolocation.clearWatch(watchIdGPS);
+            
+            watchIdGPS = navigator.geolocation.watchPosition(
+                pos => {
+                    const coords = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+                    socket.emit('actualizar_ubicacion_piloto', { viajeId, coords });
+                },
+                err => console.error("Error GPS:", err),
+                { enableHighAccuracy: true, maximumAge: 1000, timeout: 10000 }
+            );
+            alert('🚀 GPS en vivo activado.');
+        }
+
+        function verificarCodigoConductor(viajeId) {
+            if (document.activeElement) document.activeElement.blur();
+            const codigo = document.getElementById(`input-codigo-${viajeId}`).value.trim();
+            if (codigo) socket.emit('verificar_codigo', { viajeId, codigo });
+        }
+
+        function inicializarMapaConductor(viajeId, cOrigen, cDestino) {
+            const mId = `driver-map-${viajeId}`;
+            const el = document.getElementById(mId);
+            if (!el) return;
+            
+            if (mapasConductores[viajeId]) {
+                mapasConductores[viajeId] = null;
+            }
+
+            const dMap = new google.maps.Map(el, {
+                center: cOrigen,
+                zoom: 14,
+                disableDefaultUI: true
+            });
+
+            new google.maps.Marker({
+                position: cOrigen,
+                map: dMap,
+                icon: 'https://maps.google.com/mapfiles/ms/icons/green-dot.png',
+                title: "Origen"
+            });
+
+            new google.maps.Marker({
+                position: cDestino,
+                map: dMap,
+                icon: 'https://maps.google.com/mapfiles/ms/icons/red-dot.png',
+                title: "Destino"
+            });
+
+            mapasConductores[viajeId] = dMap;
+        }
+
+        socket.on('nuevo_viaje_disponible', (viaje) => {
+            if (!conductorInfo) return;
+            if (viaje.tipoVehiculo.toLowerCase().trim() !== conductorInfo.tipoVehiculo.toLowerCase().trim()) return;
+
+            const contenedor = document.getElementById('contenedor-tarjetas-viajes');
+            let div = document.getElementById(`viaje-${viaje.id}`);
+            if (!div) {
+                div = document.createElement('div');
+                div.className = 'ride-card';
+                div.id = `viaje-${viaje.id}`;
+                contenedor.appendChild(div);
+            }
+
+            const inc = viaje.incremento || 2;
+            div.innerHTML = `
+                <span class="badge-vehiculo">${viaje.tipoVehiculo.toUpperCase()}</span>
+                <p><strong>Pasajero:</strong> ${viaje.pasajeroNombre}</p>
+                <div id="driver-map-${viaje.id}" class="driver-map"></div>
+                <p>Origen: ${viaje.origen} | Destino: ${viaje.destino}</p>
+                <p>Oferta: Q<span id="precio-${viaje.id}">${viaje.ofertaInicial}</span></p>
+                <button type="button" onclick="enviarContraofertaPiloto('${viaje.id}', ${inc})" style="width:100%; padding:10px; background:#007bff; color:white; border:none; border-radius:4px; font-weight:bold; cursor:pointer;">Enviar Propuesta Q${viaje.ofertaInicial + inc}</button>
+            `;
+            if (viaje.coordsOrigen && viaje.coordsDestino) {
+                setTimeout(() => inicializarMapaConductor(viaje.id, viaje.coordsOrigen, viaje.coordsDestino), 300);
+            }
+        });
+
+        socket.on('contraoferta_recibida', (data) => {
+            if (viajeActivoId === data.viajeId) {
+                document.getElementById('contenedor-ofertas-pilotos').style.display = 'block';
+                const listaOfertas = document.getElementById('lista-ofertas-recibidas');
+                
+                let itemOferta = document.getElementById(`oferta-piloto-${data.conductorNombre.replace(/\s+/g, '')}`);
+                if (!itemOferta) {
+                    itemOferta = document.createElement('div');
+                    itemOferta.className = 'oferta-item';
+                    itemOferta.id = `oferta-piloto-${data.conductorNombre.replace(/\s+/g, '')}`;
+                    listaOfertas.appendChild(itemOferta);
+                }
+
+                itemOferta.innerHTML = `
+                    <span>🚗 <strong>${data.conductorNombre}</strong> propone: <strong style="color: #d39e00;">Q${data.oferta}</strong></span>
+                    <button type="button" onclick="seleccionarOfertaPasajero('${data.conductorNombre}', ${data.oferta})" style="background: #28a745; width: auto; padding: 6px 12px; margin: 0; border:none; color:white; border-radius:4px; cursor:pointer;">Aceptar</button>
+                `;
+            }
+        });
+
+        socket.on('viaje_aceptado_exito', (viaje) => {
+            const viajeId = viaje.id;
+            
+            if (viajeActivoId === viajeId) {
+                document.getElementById('panel-solicitud-pasajero').style.display = 'none';
+                document.getElementById('panel-viaje-exitoso-pasajero').style.display = 'block';
+                document.getElementById('pasajero-info-conductor').innerText = viaje.conductorNombre;
+                document.getElementById('pasajero-info-precio').innerText = viaje.ofertaInicial;
+                document.getElementById('pasajero-info-codigo').innerText = viaje.codigoVerificacion;
+
+                setTimeout(() => {
+                    if (viaje.coordsOrigen) {
+                        const vivoEl = document.getElementById('pasajero-mapa-vivo');
+                        if (vivoEl) {
+                            pasajeroMapaVivo = new google.maps.Map(vivoEl, {
+                                center: viaje.coordsOrigen,
+                                zoom: 15,
+                                disableDefaultUI: true
+                            });
+
+                            new google.maps.Marker({
+                                position: viaje.coordsOrigen,
+                                map: pasajeroMapaVivo,
+                                icon: 'https://maps.google.com/mapfiles/ms/icons/green-dot.png'
+                            });
+
+                            pasajeroMarkerPiloto = new google.maps.Marker({
+                                position: viaje.coordsOrigen,
+                                map: pasajeroMapaVivo,
+                                icon: 'https://maps.google.com/mapfiles/ms/icons/blue-dot.png'
+                            });
+                        }
+                    }
+                }, 300);
+            }
+
+            const card = document.getElementById(`viaje-${viajeId}`);
+            if (card) {
+                card.innerHTML = `
+                    <p style="color: #007bff; font-weight: bold;">¡El pasajero aceptó tu oferta!</p>
+                    <div id="driver-map-${viajeId}" class="driver-map"></div>
+                    <div style="display: flex; gap: 8px; margin-top: 5px;">
+                        <button type="button" onclick="iniciarRecogidaPiloto('${viajeId}')" style="background: #17a2b8; margin:0; flex:1; padding:10px; border:none; color:white; border-radius:4px; font-weight:bold; cursor:pointer;">🚗 Ir a inicio</button>
+                        <button type="button" onclick="abrirGPSExterno(${viaje.coordsOrigen.lat}, ${viaje.coordsOrigen.lng})" style="background: #ffc107; color:#333; margin:0; flex:1; padding:10px; border:none; border-radius:4px; font-weight:bold; cursor:pointer;">🧭 GPS</button>
+                    </div>
+                    <input type="text" id="input-codigo-${viajeId}" placeholder="Código de pasajero" style="margin-top:8px;">
+                    <button type="button" onclick="verificarCodigoConductor('${viajeId}')" style="background: #28a745; width:100%; padding:10px; border:none; color:white; border-radius:4px; font-weight:bold; cursor:pointer;">Validar Código</button>
+                `;
+                setTimeout(() => inicializarMapaConductor(viajeId, viaje.coordsOrigen, viaje.coordsDestino), 300);
+            }
+        });
+
+        socket.on('viaje_iniciado_exito', (viaje) => {
+            const viajeId = viaje.id;
+            const card = document.getElementById(`viaje-${viajeId}`);
+            if (card) {
+                card.innerHTML = `
+                    <p style="color: green; font-size: 1.1em; font-weight: bold; margin-bottom: 5px;">🚀 ¡Viaje en Curso!</p>
+                    <p style="margin: 2px 0;"><strong>Pasajero:</strong> ${viaje.pasajeroNombre}</p>
+                    <p style="margin: 2px 0; color: #dc3545;"><strong>Destino:</strong> ${viaje.destino}</p>
+                    
+                    <div id="driver-map-${viajeId}" class="driver-map"></div>
+
+                    <button type="button" onclick="abrirGPSExterno(${viaje.coordsDestino.lat}, ${viaje.coordsDestino.lng})" style="background: #ffc107; color: #333; margin-top: 8px; width:100%; padding:10px; border:none; border-radius:4px; font-weight:bold; cursor:pointer;">🧭 Abrir Destino en GPS</button>
+                    <button type="button" onclick="omitirViajeConductor('${viajeId}')" style="background: #dc3545; margin-top: 10px; width:100%; padding:10px; border:none; color:white; border-radius:4px; font-weight:bold; cursor:pointer;">Finalizar Viaje</button>
+                `;
+                setTimeout(() => inicializarMapaConductor(viajeId, viaje.coordsOrigen, viaje.coordsDestino), 300);
+            }
+        });
+
+        function omitirViajeConductor(viajeId) {
+            delete mapasConductores[viajeId];
+            document.getElementById(`viaje-${viajeId}`)?.remove();
+        }
+
+        socket.on('ubicacion_piloto_en_vivo', (data) => {
+            if (viajeActivoId === data.viajeId && pasajeroMapaVivo && pasajeroMarkerPiloto) {
+                const newPos = new google.maps.LatLng(data.coords.lat, data.coords.lng);
+                pasajeroMarkerPiloto.setPosition(newPos);
+                pasajeroMapaVivo.panTo(newPos);
+            }
+        });
+
+        socket.on('viaje_cancelado_exito', (data) => {
+            if (viajeActivoId === data.viajeId) {
+                viajeActivoId = null;
+                if (watchIdGPS) navigator.geolocation.clearWatch(watchIdGPS);
+                document.getElementById('panel-solicitud-pasajero').style.display = 'block';
+                document.getElementById('panel-viaje-exitoso-pasajero').style.display = 'none';
+                document.getElementById('contenedor-ofertas-pilotos').style.display = 'none';
+                document.getElementById('lista-ofertas-recibidas').innerHTML = '';
+                const btn = document.getElementById('btn-solicitar');
+                btn.innerText = '🚀 SOLICITAR VIAJE';
+                btn.style.background = '#28a745';
+                document.getElementById('btn-cancelar-viaje').style.display = 'none';
+                coordsOrigen = null;
+                coordsDestino = null;
+                if (markerOrigen) { markerOrigen.setMap(null); markerOrigen = null; }
+                if (markerDestino) { markerDestino.setMap(null); markerDestino = null; }
+            }
+            delete mapasConductores[data.viajeId];
+            document.getElementById(`viaje-${data.viajeId}`)?.remove();
+        });
+    </script>
+</body>
+</html>
