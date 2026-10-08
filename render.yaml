@@ -3,5 +3,5 @@ services:
     name: sion-driver
     env: node
     plan: free
-    buildCommand: npm install
+    buildCommand: npm install --build-from-source
     startCommand: node index.js
